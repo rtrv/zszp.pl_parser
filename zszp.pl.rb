@@ -1,7 +1,8 @@
 # 1. Надо загрузить все страницы. Или просто получать их и сразу парсить.
 # 2. Надо сформировать хэш
 # 3. Надо запилить всё это дело в csv и сохранить с двумя версиями разделителей
-# Сначала загрузить страницу без параметров и дернуть оттуда список вариантов #pid0
+# Сначала загрузить страницу без параметров и дернуть оттуда список вариантов
+# #pid0
 # Затем построить запрос для каждого варианта, добавить параметр pco0
 # При первой загрузке проверить, сколько страниц есть для каждого варианта
 # Пройтись по страницам и, собственно, дёрнуть оттуда названия
@@ -9,25 +10,31 @@
 # ! Надо парсить синонимы (готово)
 # ! Надо алгоритм деления на род, вид и сорт
 
-# Точное определение: (слово с большой буквы) пробел (слово) пробел (что-то начиная с кавычки)
-# Ещё один вариант: (слово с большой буквы) пробел (слово) пробел (что-то начиная со слова из больших букв)
+# Точное определение: (слово с большой буквы) пробел (слово) пробел (что-то
+# начиная с кавычки)
+
+# Ещё один вариант: (слово с большой буквы) пробел (слово) пробел (что-то
+# начиная со слова из больших букв)
 
 require 'rubygems'
 require 'nokogiri'
 require 'net/http'
 require 'pry'
 require 'csv'
+require 'json'
 
-# хэш для растений
+# TODO: get LANG from command line
+LANG = 3 # 1 - Polish, 2 - English, 3 - Russian
+
+# Хэш для растений
 plants = {}
 
 advanced_search_page =
-  Nokogiri::HTML Net::HTTP.get('www.zszp.pl', '/?id=215&lang=3')
+  Nokogiri::HTML Net::HTTP.get('www.zszp.pl', "/?id=215&lang=#{LANG}")
 
 GROUP_SELECT_TAG = 'select#pid0'.freeze
 FORM_SELECT_TAG = 'select#pid2'.freeze
 SIGNIFICANT_OPTION_TAG = 'option.czarny'.freeze
-group_tags = []
 
 advanced_search_page.search(GROUP_SELECT_TAG)
                     .search(SIGNIFICANT_OPTION_TAG).each do |group|
@@ -45,8 +52,10 @@ end
 
 def page_content(group_id, page, form = '0')
   Nokogiri::HTML(
-    Net::HTTP.get('www.zszp.pl',
-                  "/?id=215&lang=3&pco0=#{group_id}&pco2=#{form}&s=#{page}")
+    Net::HTTP.get(
+      'www.zszp.pl',
+      "/?id=215&lang=#{LANG}&pco0=#{group_id}&pco2=#{form}&s=#{page}"
+    )
   )
 end
 
@@ -56,7 +65,6 @@ plants.each do |group_id, group|
     current_page = page_content(group_id, page)
     puts "Group #{group_id}, page #{page}"
     elements = current_page.search('div.szukaj500')
-    # binding.pry if group_id == '3'
     elements.each do |element|
       plant_name = element.text.match(/.+/)[0]
       synonims_match = element.text.match(/Synonimy: (.+)/)
@@ -83,7 +91,8 @@ plants.each do |group_id, group|
       elements = current_page.search('div.szukaj500')
       elements.each do |element|
         found_plant = element.text.match(/.+/)[0]
-        # Пройдём по найденным растениям, ищем их в plants и добавляем текущую группу
+        # Пройдём по найденным растениям, ищем их в plants и добавляем текущую
+        # группу
         group[:plants].each do |plant|
           next unless plant[:name] == found_plant
           plant[:form] = form_name
@@ -125,7 +134,7 @@ def parse_plant_name(name)
 end
 
 plants_array = []
-plants.each do |group_id, group|
+plants.each do |_group_id, group|
   group[:plants].each do |plant|
     parsed = parse_plant_name(plant[:name])
     synonims = []
@@ -141,9 +150,8 @@ plants.each do |group_id, group|
 
   end
 end
-binding.pry
-require 'json'
-File.open('plants_array','w') do |f|
+
+File.open('plants_array', 'w') do |f|
   f.write(plants_array.join("\n"))
 end
 
@@ -175,8 +183,8 @@ plants_array.each do |plant|
 end
 
 CSV.open("plants_#{Time.now.to_i}.csv", 'wb') do |csv|
-  csv << ["Группа", "Форма", "Род", "Вид", "Сорт", "Дополнительная информация",
-          "Синонимы"]
+  csv << ['Группа', 'Форма', 'Род', 'Вид', 'Сорт', 'Дополнительная информация',
+          'Синонимы']
   plants_hash.each do |group_name, group|
     group.each do |form_name, form|
       form.each do |kind_name, kind|
